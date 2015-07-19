@@ -1,0 +1,28 @@
+makeModuleMap返回数据结构：
+{
+    prefix: prefix,
+    name: normalizedName,
+    parentMap: parentModuleMap,
+    unnormalized: !!suffix,
+    url: url,
+    originalName: originalName,
+    isDefine: isDefine,
+    id: (prefix ?
+            prefix + '!' + normalizedName :
+            normalizedName) + suffix
+};
+
+
+require里的factory方法就是callback函数
+
+在初始化module时调用enable时创建的module是没有初始化的
+
+每次通过req调用config重新配置配置项时都会检查是否有module需要加载
+
+checkLoaded时会检查是否超时
+
+调用require函数时会创建两种类型的module
+1.内部module，这个module的isDefined始终为false
+2.正常的module，这种module创建时不初始化，所以isInited为undefined，等待加载完成之后，通过调用callGetModule来设置isInited为true
+
+所有module在初始创建时，是没有enabled，只有调用module的enable函数才将enabled设置为true
