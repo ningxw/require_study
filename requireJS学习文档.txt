@@ -1,4 +1,4 @@
-makeModuleMap返回数据结构：
+ModuleMap的数据结构：
 {
     prefix: prefix,
     name: normalizedName,
@@ -6,12 +6,31 @@ makeModuleMap返回数据结构：
     unnormalized: !!suffix,
     url: url,
     originalName: originalName,
-    isDefine: isDefine,
+    isDefine: isDefine,  表明是require操作还是define操作
     id: (prefix ?
             prefix + '!' + normalizedName :
             normalizedName) + suffix
 };
 
+Module的数据结构：
+Module = function (map) //构造函数
+{
+    //在构造函数中赋值
+    events : getOwn(undefEvents, map.id) || {};
+    map : map;
+    shim : getOwn(config.shim, map.id);
+    depExports : [];
+    depMaps : [];
+    depMatched : [];
+    pluginMaps : {};
+    depCount : 0;
+
+    //在初始化函数init()中赋值
+    factory : callback  //调用require或者define传入的callback函数
+    errback : //根据传递的errback和events.error综合赋值
+    inited : 在enable之前设置为true
+    ignore: options.ignore
+}
 
 require里的factory方法就是callback函数
 
@@ -26,3 +45,77 @@ checkLoaded时会检查是否超时
 2.正常的module，这种module创建时不初始化，所以isInited为undefined，等待加载完成之后，通过调用callGetModule来设置isInited为true
 
 所有module在初始创建时，是没有enabled，只有调用module的enable函数才将enabled设置为true
+
+contexts是一个map，key是contentName  value是相应的context   defContextName为_
+
+config.urlArgs可以向URL中添加参数，一个应用地点：为静态资源添加版本号
+
+localRequire()的几次调用分析
+==第一次调用==  
+req({}); //Create default context
+
+==第二次调用==  
+解析baseUrl和data-main后call req(cfg); //Set up with config info  触发context.configure(config); 由于存在deps，触发content.require()
+
+==第三次调用==  
+紧跟第二次调用，在调用context.configure(config)后，调用context.require(deps, callback, errback)
+
+==第四次调用==
+在main文件中调用require.config之后
+
+==第n次调用==
+直接调用require(),类似第一、三次调用
+
+
+个人感受在localRequire中使用context.nextTick()函数增加了代码的阅读难度，目前没有发现没有发现为什么需要加入这个操作
+
+
+
+
+==define函数解析==
+注意：ECMAScript v3 规定，replace() 方法的参数 replacement 可以是函数而不是字符串。在这种情况下，每个匹配都调用该函数，它返回的字符串将作为替换文本使用。该函数的第一个参数是匹配模式的字符串。接下来的参数是与模式中的子表达式匹配的字符串，可以有 0 个或多个这样的参数。接下来的参数是一个整数，声明了匹配在 stringObject 中出现的位置。最后一个参数是 stringObject 本身。
+
+
+
+在append页面的元素存在一个属性：data-requiremodule
+例如：<script type="text/javascript" charset="utf-8" async="" data-requirecontext="_" data-requiremodule="name" src="./js/./1/name.js"></script>
+
+requireJS中事件处理利用数组来存储事件处理函数，这一点和jQuery是类似的
+
+
+==额外需要的知识==
+splice()函数是向数组添加元素或者删除数组的元素，第一个参数规定操作开始的位置，第二个参数说明要删除的元素个数，第三个及其后面的参数是要加入的元素
+
+
+脚本加载完成之后，调用define函数往GlobalQueue中插入一条define记录
+context.onScriptLoad  //在脚本加载完成之后调用,其中解析出moduleName
+context.completeLoad //从GlobalQueue中取出一条记录，完善参数  最后调用checkLoaded循环检查相关依赖是否已经加载完成
+callGetModule  //根据moduleName取出对应的module，然后初始化这个module
+Module.init //在这个函数中赋值inited为true，后期在调用check()函数时，就不用调用fetch函数去加载脚本了
+
+init的最后一步是根据是否enabled来调用enable还是check (enable的最后一步也是调用check)
+
+enable做的事情：
+1.如果有依赖，这循环为每个依赖创建module，然后为创建的module绑定事件“defined”和“error”(可选)，最后调用module的enable方法（此处自我嵌套调用，解决了链式依赖，如A依赖B，B依赖C)
+2.调用check
+
+check做的事情
+1.如果module还是没有调用init方法，则需要加载脚本fetch
+2.如果模块存在error，则触发error事件(这里和enable中绑定的error事件相呼应)
+3.如果检查depCount是否为0，为0有两种情况：一：该模块没有依赖；二：模块的依赖都已加载并且脚本已执行  创建Module时，默认depCount为0，如果存在依赖，则enable()的第一步中每循环一个依赖，depCount自增1
+  如果depCount为0且module没有定义，则需要创建module的exports属性，分两种情况：
+  一：如果callback是函数，则执行这个函数，并把结果赋给exports
+  二：如果callback不是函数，则认为是字面值，直接赋给exports
+  做完上述事情，则将exports添加进defined map中去，然后做一些清理工作，同时设置module的defined为true
+  如果module的defineEmitted不为true，则触发defined事件(enable中绑定了defined事件)
+
+
+==checkLoaded函数分析==
+
+==关于error的处理==
+当为一个module设置了errorback,会为这个module绑定error事件；
+同时如果这个module依赖其它module，也会为其它module绑定error事件，而事件处理函数就是上面设置的errorback
+define调用时是没有errorback的，
+
+
+https://dzone.com
